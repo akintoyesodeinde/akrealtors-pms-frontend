@@ -1,10 +1,37 @@
 /// <reference types="vitest/config" />
+import fs from 'node:fs';
+import path from 'node:path';
+import { buildSync } from 'esbuild';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-export default defineConfig({
+function ensureTestLucideBundle(): string {
+  const outFile = path.resolve(__dirname, 'node_modules/.tmp/lucide-react-test.mjs');
+  if (!fs.existsSync(outFile)) {
+    fs.mkdirSync(path.dirname(outFile), { recursive: true });
+    buildSync({
+      entryPoints: [path.resolve(__dirname, 'node_modules/lucide-react/dist/esm/lucide-react.js')],
+      outfile: outFile,
+      bundle: true,
+      format: 'esm',
+      external: ['react'],
+      logLevel: 'silent',
+    });
+  }
+  return outFile;
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias:
+      mode === 'test'
+        ? {
+            'lucide-react': ensureTestLucideBundle(),
+          }
+        : undefined,
+  },
   server: {
     port: 5173,
     strictPort: true,
@@ -18,6 +45,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    css: true,
+    css: false,
+    testTimeout: 15000,
   },
-});
+}));
