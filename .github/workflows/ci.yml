@@ -1,0 +1,107 @@
+name: Frontend CI & Release Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  lint-typecheck-test-build:
+    name: Lint, Typecheck, Unit Tests & Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run strict TypeScript check
+        run: npm run typecheck
+
+      - name: Run unit & component tests (Vitest)
+        run: npm run test:run
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Audit dependencies (high/critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Upload production dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: akrealtors-pms-frontend-dist
+          path: dist/
+          retention-days: 14
+
+  e2e-browser:
+    name: Playwright Browser Tests
+    needs: lint-typecheck-test-build
+    runs-on: ubuntu-latest
+    if: vars.RUN_E2E_IN_CI == 'true'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies & Playwright Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Execute Playwright tests
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ vars.E2E_FRONTEND_BASE_URL || 'http://localhost:5173' }}
+        run: npm run test:e2e
+
+  deploy-staging:
+    name: Deploy to Staging & Smoke Check
+    needs: lint-typecheck-test-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy & run smoke check
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          STAGING_URL: ${{ vars.STAGING_FRONTEND_URL }}
+        run: |
+          curl --fail --silent --show-error -X POST "$DEPLOY_WEBHOOK_URL"
+          curl --fail --silent "$STAGING_URL" | grep -qi "AkRealtors"
+
+  promote-production:
+    name: Promote to Production (Approved Release Tag)
+    needs: lint-typecheck-test-build
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Promote artifact & verify
+        env:
+          PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
+          PROD_URL: ${{ vars.PROD_FRONTEND_URL }}
+        run: |
+          curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL"
+          curl --fail --silent "$PROD_URL" | grep -qi "AkRealtors"
