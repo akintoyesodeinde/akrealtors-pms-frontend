@@ -7,7 +7,6 @@ import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
-import { useAuth } from './features/auth/useAuth';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
 import { HomePage } from './features/public/HomePage';
 import {
@@ -24,6 +23,7 @@ import { RequireAuth } from './routes/RequireAuth';
 
 const CustomerPortalRoutes = lazy(() => import('./features/portal/CustomerPortalRoutes'));
 const RealtorWorkspaceRoutes = lazy(() => import('./features/realtor/RealtorWorkspaceRoutes'));
+const AdminRoutes = lazy(() => import('./features/admin/AdminRoutes'));
 
 const defaultQueryClient = new QueryClient({
   defaultOptions: {
@@ -34,26 +34,6 @@ const defaultQueryClient = new QueryClient({
     },
   },
 });
-
-function AuthenticatedWorkspaceOverview({ title }: { title: string }) {
-  const { user } = useAuth();
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-3">
-        <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-        <p className="text-sm text-slate-600">
-          Signed in as <strong>{user?.email}</strong> ({user?.roles.join(', ')}).
-        </p>
-        <Link
-          to="/properties"
-          className="inline-block text-sm font-semibold text-emerald-700 hover:underline"
-        >
-          Browse Marketplace Properties →
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 function NotFoundPage() {
   return (
@@ -117,7 +97,7 @@ export function AppRoutes() {
             path="/admin/*"
             element={
               <RequireAuth allowedRoles={['MODERATOR', 'PLATFORM_ADMIN']}>
-                <AuthenticatedWorkspaceOverview title="Platform Administration & Moderation" />
+                <AdminRoutes />
               </RequireAuth>
             }
           />

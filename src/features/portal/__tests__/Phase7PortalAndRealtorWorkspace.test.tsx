@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -259,10 +259,11 @@ describe('Phase 7 Customer Portal & Realtor Workspace Flows', () => {
 
     // Open inline structured enquiry form & submit
     await user.click(screen.getByRole('button', { name: /Send Structured Enquiry/i }));
-    await user.type(
-      screen.getByLabelText(/Your Message/i),
-      'Is the Certificate of Occupancy available for solicitor inspection this week?',
-    );
+    fireEvent.change(screen.getByLabelText(/Your Message/i), {
+      target: {
+        value: 'Is the Certificate of Occupancy available for solicitor inspection this week?',
+      },
+    });
     await user.click(screen.getByRole('button', { name: /Submit Enquiry/i }));
 
     await waitFor(() => {
@@ -360,16 +361,18 @@ describe('Phase 7 Customer Portal & Realtor Workspace Flows', () => {
     );
     expect(createOfferSpy).not.toHaveBeenCalled();
 
-    await user.type(
-      screen.getByLabelText(/Property Title/i),
-      '4 Bedroom Terrace Duplex in Lekki',
-    );
-    await user.type(
-      screen.getByLabelText(/Detailed Property Description/i),
-      'Well-finished terrace duplex in gated estate with 24/7 security and clean water.',
-    );
+    fireEvent.change(screen.getByLabelText(/Property Title/i), {
+      target: { value: '4 Bedroom Terrace Duplex in Lekki' },
+    });
+    fireEvent.change(screen.getByLabelText(/Detailed Property Description/i), {
+      target: {
+        value: 'Well-finished terrace duplex in gated estate with 24/7 security and clean water.',
+      },
+    });
     await user.selectOptions(await screen.findByLabelText(/City \/ LGA/i), 'Lekki');
-    await user.type(screen.getByLabelText(/Headline Price/i), '185000000');
+    fireEvent.change(screen.getByLabelText(/Headline Price/i), {
+      target: { value: '185000000' },
+    });
 
     await user.click(
       screen.getByRole('button', { name: /Save Draft & Continue to Media Upload/i }),

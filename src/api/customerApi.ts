@@ -1,5 +1,7 @@
 import { httpClient } from './client';
 import type {
+  AbuseReportResponse,
+  CreateAbuseReportRequest,
   CreateEnquiryRequest,
   CreateViewingRequestDto,
   CustomerEnquiryResponse,
@@ -108,6 +110,18 @@ export const customerApi = {
       '/me/notifications/read-all',
       {},
     );
+    return data;
+  },
+
+  async submitAbuseReport(payload: CreateAbuseReportRequest): Promise<AbuseReportResponse> {
+    const { data } = await httpClient.post<AbuseReportResponse>('/abuse-reports', payload);
+    return data;
+  },
+
+  async listMyAbuseReports(page = 0, size = 20): Promise<PageResponse<AbuseReportResponse>> {
+    const { data } = await httpClient.get<PageResponse<AbuseReportResponse>>('/me/abuse-reports', {
+      params: { page, size },
+    });
     return data;
   },
 };

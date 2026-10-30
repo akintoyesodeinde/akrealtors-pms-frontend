@@ -480,7 +480,7 @@ export interface UpsertRealtorProfileRequest {
   whatsappNumber?: string;
 }
 
-export type AgencyStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+export type AgencyStatus = 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 export type AgencyMembershipRole = 'OWNER' | 'ADMIN' | 'AGENT';
 export type AgencyMembershipStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
 
@@ -802,4 +802,179 @@ export interface RealtorDashboardResponse {
   inProgressEnquiries: number;
   pendingViewingRequests: number;
   confirmedViewingRequests: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Trust & Safety (Abuse Reports) and Platform Administration
+// ---------------------------------------------------------------------------
+
+export type AbuseTargetType = 'OFFER' | 'REALTOR' | 'AGENCY';
+
+export type AbuseReasonCategory =
+  | 'FRAUD_OR_SCAM'
+  | 'DUPLICATE_OR_SPAM'
+  | 'MISLEADING_PRICE_OR_FEES'
+  | 'UNAUTHORIZED_MARKETING'
+  | 'INAPPROPRIATE_MEDIA'
+  | 'IMPERSONATION'
+  | 'OTHER';
+
+export type AbuseReportStatus =
+  | 'OPEN'
+  | 'UNDER_INVESTIGATION'
+  | 'RESOLVED_ACTION_TAKEN'
+  | 'DISMISSED';
+
+export interface CreateAbuseReportRequest {
+  targetType: AbuseTargetType;
+  targetOfferId?: string;
+  targetRealtorId?: string;
+  targetAgencyId?: string;
+  reasonCategory: AbuseReasonCategory;
+  details: string;
+  reporterEmail?: string;
+  reporterName?: string;
+}
+
+export interface AbuseReportResponse {
+  id: string;
+  reporterUserId: string | null;
+  reporterEmail: string | null;
+  reporterName: string | null;
+  targetType: AbuseTargetType;
+  targetOfferId: string | null;
+  targetOfferTitle: string | null;
+  targetRealtorId: string | null;
+  targetRealtorName: string | null;
+  targetAgencyId: string | null;
+  targetAgencyName: string | null;
+  reasonCategory: AbuseReasonCategory;
+  details: string;
+  status: AbuseReportStatus;
+  assignedModeratorId: string | null;
+  resolutionNotes: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResolveAbuseReportRequest {
+  status: AbuseReportStatus;
+  resolutionNotes?: string;
+  suspendTargetOffer: boolean;
+}
+
+export interface AdminDashboardResponse {
+  totalUsers: number;
+  activeUsers: number;
+  suspendedUsers: number;
+  totalRealtors: number;
+  activeAgencies: number;
+  publishedOffers: number;
+  pendingReviewOffers: number;
+  rejectedOffers: number;
+  suspendedOffers: number;
+  pendingVerificationCases: number;
+  openAbuseReports: number;
+  investigatingAbuseReports: number;
+  pendingOutboxEvents: number;
+  deadLetterOutboxEvents: number;
+}
+
+export interface AdminUserResponse {
+  id: string;
+  email: string;
+  phoneNumber: string | null;
+  firstName: string;
+  lastName: string;
+  accountStatus: AccountStatus;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  suspendedReason: string | null;
+  suspendedAt: string | null;
+  lastLoginAt: string | null;
+  roles: RoleCode[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateUserStatusRequest {
+  accountStatus: AccountStatus;
+  reason?: string;
+  grantModeratorRole?: boolean;
+}
+
+export interface UpdateAgencyStatusRequest {
+  status: AgencyStatus;
+  reason?: string;
+}
+
+export interface CreateAmenityRequest {
+  code: string;
+  name: string;
+  category: string;
+}
+
+export interface UpdateAmenityRequest {
+  name?: string;
+  category?: string;
+  active?: boolean;
+}
+
+export type PlatformSettingValueType = 'BOOLEAN' | 'INTEGER' | 'STRING';
+
+export interface PlatformSettingResponse {
+  settingKey: string;
+  settingValue: string;
+  valueType: PlatformSettingValueType;
+  description: string;
+  updatedByUserId: string | null;
+  updatedAt: string;
+}
+
+export interface AuditLogResponse {
+  id: string;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  actionType: string;
+  targetType: string;
+  targetId: string | null;
+  agencyId: string | null;
+  correlationId: string | null;
+  summary: string;
+  metadataJson: string | null;
+  createdAt: string;
+}
+
+export interface DuplicateOfferItem {
+  offerId: string;
+  propertyId: string;
+  title: string;
+  state: string;
+  city: string;
+  transactionType: TransactionType;
+  price: number;
+  currency: string;
+  publicationState: OfferPublicationState;
+  advertiserDisplayName: string;
+  createdAt: string;
+}
+
+export interface DuplicateOfferGroupResponse {
+  matchReason: 'SAME_PROPERTY_AND_TRANSACTION' | 'MATCHING_HEADLINE_AND_LOCATION';
+  fingerprintKey: string;
+  offers: DuplicateOfferItem[];
+}
+
+export interface ModerationDecisionRequest {
+  reason?: string;
+  featured?: boolean;
+  expiresAt?: string;
+}
+
+export type VerificationDecisionOutcome = 'APPROVE' | 'REJECT' | 'REVOKE';
+
+export interface VerificationDecisionRequest {
+  outcome: VerificationDecisionOutcome;
+  reason?: string;
 }
