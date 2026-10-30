@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Filter, RotateCcw, Scale, SlidersHorizontal } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import type {
   PublicPropertySearchItem,
   TransactionType,
 } from '../../api/contracts';
+import { customerApi } from '../../api/customerApi';
 import { marketplaceApi } from '../../api/marketplaceApi';
 import { PropertyCard } from '../../components/ui/PropertyCard';
 import { SeoHead } from '../../components/ui/SeoHead';
@@ -19,6 +20,7 @@ import {
   PaginationBar,
 } from '../../components/ui/StateBoxes';
 import { formatPropertyType } from '../../lib/formatters';
+import { useAuth } from '../auth/useAuth';
 import { ListingCompareModal } from './ListingCompareModal';
 
 const PROPERTY_TYPES: PropertyType[] = [
@@ -51,10 +53,36 @@ function parseOptionalNumber(raw: string | null): number | undefined {
 }
 
 export function PropertySearchPage() {
+  const { isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showFiltersMobile, setShowFiltersMobile] = useState(false);
   const [comparedItems, setComparedItems] = useState<PublicPropertySearchItem[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+
+  const favouriteIdsQuery = useQuery({
+    queryKey: ['favourites', 'ids'],
+    queryFn: () => customerApi.listFavouriteIds(),
+    enabled: isAuthenticated,
+  });
+
+  const favouriteSet = useMemo(
+    () => new Set(favouriteIdsQuery.data ?? []),
+    [favouriteIdsQuery.data],
+  );
+
+  const toggleFavouriteMutation = useMutation({
+    mutationFn: async (offerId: string) => {
+      if (favouriteSet.has(offerId)) {
+        await customerApi.removeFavourite(offerId);
+      } else {
+        await customerApi.saveFavourite(offerId);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['favourites'] });
+    },
+  });
 
   const criteria: PropertySearchParams = useMemo(() => {
     const tx = searchParams.get('transactionType') as TransactionType | null;
@@ -552,6 +580,12 @@ export function PropertySearchPage() {
                     item={item}
                     isCompared={comparedItems.some((c) => c.id === item.id)}
                     onToggleCompare={handleToggleCompare}
+                    isFavourite={favouriteSet.has(item.id)}
+                    onToggleFavourite={
+                      isAuthenticated
+                        ? (offerId) => toggleFavouriteMutation.mutate(offerId)
+                        : undefined
+                    }
                   />
                 ))}
               </div>

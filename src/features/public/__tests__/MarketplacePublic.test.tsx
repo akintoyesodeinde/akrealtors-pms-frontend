@@ -11,6 +11,8 @@ import type {
   UserProfileResponse,
 } from '../../../api/contracts';
 import { marketplaceApi } from '../../../api/marketplaceApi';
+import { customerApi } from '../../../api/customerApi';
+import { realtorApi } from '../../../api/realtorApi';
 import { MediaGallery } from '../../../components/ui/MediaGallery';
 import { VerificationPanel } from '../../../components/ui/VerificationBadges';
 import { AuthContext } from '../../auth/useAuth';
@@ -293,6 +295,22 @@ describe('Phase 6 Public Marketplace & Auth Flows', () => {
 
   it('validates registration form inputs with Zod and calls authApi.registerRealtor on valid submission', async () => {
     const user = userEvent.setup();
+    vi.spyOn(customerApi, 'getUnreadNotificationCount').mockResolvedValue({ unreadCount: 0 });
+    vi.spyOn(realtorApi, 'listMyMemberships').mockResolvedValue([]);
+    vi.spyOn(realtorApi, 'getDashboard').mockResolvedValue({
+      scope: 'REALTOR',
+      scopeId: 'r1',
+      displayName: 'Chidi Prime Estates',
+      onboardingStatus: 'INCOMPLETE',
+      verificationStatus: 'UNVERIFIED',
+      offersByState: {},
+      totalViews: 0,
+      totalSavedFavourites: 0,
+      openEnquiries: 0,
+      inProgressEnquiries: 0,
+      pendingViewingRequests: 0,
+      confirmedViewingRequests: 0,
+    });
     const registerSpy = vi.spyOn(authApi, 'registerRealtor').mockResolvedValue({
       accessToken: 'jwt-token',
       tokenType: 'Bearer',

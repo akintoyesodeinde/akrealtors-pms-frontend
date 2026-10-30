@@ -1,12 +1,22 @@
-import { Building2, LogOut, Menu, ShieldCheck, UserCircle2, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Bell, Building2, LogOut, Menu, ShieldCheck, UserCircle2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { customerApi } from '../api/customerApi';
 import { useAuth } from '../features/auth/useAuth';
 
 export function PublicLayout() {
   const { user, isAuthenticated, hasRole, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const unreadQuery = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => customerApi.getUnreadNotificationCount(),
+    enabled: isAuthenticated,
+    staleTime: 20_000,
+  });
+  const unreadCount = unreadQuery.data?.unreadCount ?? 0;
 
   const handleLogout = async () => {
     await logout();
@@ -82,6 +92,22 @@ export function PublicLayout() {
           <div className="hidden md:flex items-center gap-2.5">
             {isAuthenticated && user ? (
               <>
+                <Link
+                  to="/portal/notifications"
+                  aria-label={
+                    unreadCount > 0
+                      ? `Notifications (${unreadCount} unread)`
+                      : 'Notifications'
+                  }
+                  className="relative p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition"
+                >
+                  <Bell className="w-4 h-4" aria-hidden="true" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
                 <Link
                   to="/portal"
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-100"

@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { LoadingSkeletonGrid } from './components/ui/StateBoxes';
 import { AuthProvider } from './features/auth/AuthContext';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { LoginPage } from './features/auth/LoginPage';
@@ -19,6 +21,9 @@ import { PublicAgencyProfilePage } from './features/public/PublicAgencyProfilePa
 import { PublicRealtorProfilePage } from './features/public/PublicRealtorProfilePage';
 import { PublicLayout } from './layouts/PublicLayout';
 import { RequireAuth } from './routes/RequireAuth';
+
+const CustomerPortalRoutes = lazy(() => import('./features/portal/CustomerPortalRoutes'));
+const RealtorWorkspaceRoutes = lazy(() => import('./features/realtor/RealtorWorkspaceRoutes'));
 
 const defaultQueryClient = new QueryClient({
   defaultOptions: {
@@ -69,49 +74,57 @@ function NotFoundPage() {
 
 export function AppRoutes() {
   return (
-    <Routes>
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/properties" element={<PropertySearchPage />} />
-        <Route path="/properties/:offerId" element={<PropertyDetailPage />} />
-        <Route path="/realtors/:realtorId" element={<PublicRealtorProfilePage />} />
-        <Route path="/agencies/:agencyId" element={<PublicAgencyProfilePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/privacy" element={<PrivacyPolicyPage />} />
-        <Route path="/terms" element={<TermsOfUsePage />} />
-        <Route path="/contact" element={<ContactAndReportPage />} />
+    <Suspense
+      fallback={
+        <div className="max-w-7xl mx-auto px-4 py-10">
+          <LoadingSkeletonGrid count={3} />
+        </div>
+      }
+    >
+      <Routes>
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/properties" element={<PropertySearchPage />} />
+          <Route path="/properties/:offerId" element={<PropertyDetailPage />} />
+          <Route path="/realtors/:realtorId" element={<PublicRealtorProfilePage />} />
+          <Route path="/agencies/:agencyId" element={<PublicAgencyProfilePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsOfUsePage />} />
+          <Route path="/contact" element={<ContactAndReportPage />} />
 
-        <Route
-          path="/portal/*"
-          element={
-            <RequireAuth>
-              <AuthenticatedWorkspaceOverview title="Customer Portal" />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/realtor/*"
-          element={
-            <RequireAuth allowedRoles={['REALTOR', 'AGENCY_ADMIN', 'PLATFORM_ADMIN']}>
-              <AuthenticatedWorkspaceOverview title="Realtor & Agency Workspace" />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/*"
-          element={
-            <RequireAuth allowedRoles={['MODERATOR', 'PLATFORM_ADMIN']}>
-              <AuthenticatedWorkspaceOverview title="Platform Administration & Moderation" />
-            </RequireAuth>
-          }
-        />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+          <Route
+            path="/portal/*"
+            element={
+              <RequireAuth>
+                <CustomerPortalRoutes />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/realtor/*"
+            element={
+              <RequireAuth allowedRoles={['REALTOR', 'AGENCY_ADMIN', 'PLATFORM_ADMIN']}>
+                <RealtorWorkspaceRoutes />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/*"
+            element={
+              <RequireAuth allowedRoles={['MODERATOR', 'PLATFORM_ADMIN']}>
+                <AuthenticatedWorkspaceOverview title="Platform Administration & Moderation" />
+              </RequireAuth>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }
 

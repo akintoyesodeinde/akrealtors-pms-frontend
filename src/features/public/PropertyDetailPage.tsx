@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BadgeCheck,
@@ -12,15 +12,19 @@ import {
   Maximize,
   MessageSquare,
   Phone,
+  X,
 } from 'lucide-react';
+import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import type { ViewingMode } from '../../api/contracts';
+import { customerApi } from '../../api/customerApi';
 import { marketplaceApi } from '../../api/marketplaceApi';
+import { ApiClientError } from '../../api/types';
 import { MediaGallery } from '../../components/ui/MediaGallery';
 import { PropertyCard } from '../../components/ui/PropertyCard';
 import { SeoHead } from '../../components/ui/SeoHead';
 import { ErrorStateBox, LoadingSkeletonGrid } from '../../components/ui/StateBoxes';
 import { VerificationPanel } from '../../components/ui/VerificationBadges';
-import { useAuth } from '../auth/useAuth';
 import {
   formatDate,
   formatMoney,
@@ -28,10 +32,23 @@ import {
   formatPropertyType,
   formatTransactionLabel,
 } from '../../lib/formatters';
+import { useAuth } from '../auth/useAuth';
 
 export function PropertyDetailPage() {
   const { offerId } = useParams<{ offerId: string }>();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const [activeAction, setActiveAction] = useState<'NONE' | 'ENQUIRY' | 'VIEWING'>('NONE');
+  const [enquirySubject, setEnquirySubject] = useState('');
+  const [enquiryMessage, setEnquiryMessage] = useState('');
+  const [enquiryPhone, setEnquiryPhone] = useState('');
+  const [enquirySuccess, setEnquirySuccess] = useState<string | null>(null);
+
+  const [viewingDateTime, setViewingDateTime] = useState('');
+  const [viewingMode, setViewingMode] = useState<ViewingMode>('IN_PERSON');
+  const [viewingNotes, setViewingNotes] = useState('');
+  const [viewingSuccess, setViewingSuccess] = useState<string | null>(null);
 
   const detailQuery = useQuery({
     queryKey: ['properties', 'detail', offerId],
@@ -43,6 +60,65 @@ export function PropertyDetailPage() {
     queryKey: ['properties', 'similar', offerId],
     queryFn: () => marketplaceApi.getSimilarProperties(offerId ?? '', 3),
     enabled: Boolean(offerId) && Boolean(detailQuery.data),
+  });
+
+  const favouriteIdsQuery = useQuery({
+    queryKey: ['favourites', 'ids'],
+    queryFn: () => customerApi.listFavouriteIds(),
+    enabled: isAuthenticated,
+  });
+
+  const isSaved = Boolean(offerId && (favouriteIdsQuery.data ?? []).includes(offerId));
+
+  const toggleFavouriteMutation = useMutation({
+    mutationFn: async () => {
+      if (!offerId) return;
+      if (isSaved) {
+        await customerApi.removeFavourite(offerId);
+      } else {
+        await customerApi.saveFavourite(offerId);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['favourites'] });
+    },
+  });
+
+  const enquiryMutation = useMutation({
+    mutationFn: () =>
+      customerApi.createEnquiry({
+        offerId: offerId ?? '',
+        subject: enquirySubject.trim(),
+        message: enquiryMessage.trim(),
+        customerPhone: enquiryPhone.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setEnquirySuccess(
+        'Your structured enquiry has been delivered to the advertiser. Track replies in your Customer Portal.',
+      );
+      setEnquiryMessage('');
+      void queryClient.invalidateQueries({ queryKey: ['customer', 'enquiries'] });
+    },
+  });
+
+  const viewingMutation = useMutation({
+    mutationFn: () => {
+      const isoProposed = new Date(viewingDateTime).toISOString();
+      return customerApi.createViewingRequest({
+        offerId: offerId ?? '',
+        proposedAt: isoProposed,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Lagos',
+        viewingMode,
+        customerNotes: viewingNotes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      setViewingSuccess(
+        'Your viewing request has been submitted. You will be notified when the advertiser confirms or proposes a new slot.',
+      );
+      setViewingNotes('');
+      void queryClient.invalidateQueries({ queryKey: ['customer', 'viewings'] });
+    },
   });
 
   if (detailQuery.isLoading) {
@@ -78,6 +154,36 @@ export function PropertyDetailPage() {
       ? `/agencies/${offer.advertiser.id}`
       : `/realtors/${offer.advertiser.id}`;
   const loginRedirectPath = `/login?redirect=${encodeURIComponent(`/properties/${offer.id}`)}`;
+
+  const openEnquiryDrawer = () => {
+    setEnquirySuccess(null);
+    if (!enquirySubject) {
+      setEnquirySubject(`Enquiry: ${offer.title.slice(0, 120)}`);
+    }
+    if (!enquiryPhone && user?.phoneNumber) {
+      setEnquiryPhone(user.phoneNumber);
+    }
+    setActiveAction((prev) => (prev === 'ENQUIRY' ? 'NONE' : 'ENQUIRY'));
+  };
+
+  const openViewingDrawer = () => {
+    setViewingSuccess(null);
+    setActiveAction((prev) => (prev === 'VIEWING' ? 'NONE' : 'VIEWING'));
+  };
+
+  const handleEnquirySubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (enquirySubject.trim().length < 3 || enquiryMessage.trim().length < 10) {
+      return;
+    }
+    enquiryMutation.mutate();
+  };
+
+  const handleViewingSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!viewingDateTime) return;
+    viewingMutation.mutate();
+  };
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -323,42 +429,284 @@ export function PropertyDetailPage() {
             )}
 
             <div className="space-y-2.5 pt-2 border-t border-slate-100">
-              <Link
-                to={
-                  isAuthenticated
-                    ? `/portal?action=enquiry&offerId=${offer.id}`
-                    : loginRedirectPath
-                }
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold transition"
-              >
-                <MessageSquare className="w-4 h-4" aria-hidden="true" />
-                {isAuthenticated ? 'Send Structured Enquiry' : 'Sign In to Enquire'}
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openEnquiryDrawer}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold transition"
+                  >
+                    <MessageSquare className="w-4 h-4" aria-hidden="true" />
+                    Send Structured Enquiry
+                  </button>
 
-              <Link
-                to={
-                  isAuthenticated
-                    ? `/portal?action=viewing&offerId=${offer.id}`
-                    : loginRedirectPath
-                }
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-sm font-semibold transition"
-              >
-                <Calendar className="w-4 h-4" aria-hidden="true" />
-                {isAuthenticated ? 'Request Property Viewing' : 'Sign In to Request Viewing'}
-              </Link>
+                  <button
+                    type="button"
+                    onClick={openViewingDrawer}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-sm font-semibold transition"
+                  >
+                    <Calendar className="w-4 h-4" aria-hidden="true" />
+                    Request Property Viewing
+                  </button>
 
-              <Link
-                to={
-                  isAuthenticated
-                    ? `/portal?action=favourite&offerId=${offer.id}`
-                    : loginRedirectPath
-                }
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition"
-              >
-                <Heart className="w-4 h-4 text-rose-600" aria-hidden="true" />
-                {isAuthenticated ? 'Save to Favourites' : 'Sign In to Save Favourite'}
-              </Link>
+                  <button
+                    type="button"
+                    disabled={toggleFavouriteMutation.isPending}
+                    aria-pressed={isSaved}
+                    onClick={() => toggleFavouriteMutation.mutate()}
+                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition ${
+                      isSaved
+                        ? 'border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Heart
+                      className={`w-4 h-4 ${isSaved ? 'fill-rose-600 text-rose-600' : 'text-rose-600'}`}
+                      aria-hidden="true"
+                    />
+                    {isSaved ? 'Saved in Favourites' : 'Save to Favourites'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to={loginRedirectPath}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold transition"
+                  >
+                    <MessageSquare className="w-4 h-4" aria-hidden="true" />
+                    Sign In to Enquire
+                  </Link>
+
+                  <Link
+                    to={loginRedirectPath}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-sm font-semibold transition"
+                  >
+                    <Calendar className="w-4 h-4" aria-hidden="true" />
+                    Sign In to Request Viewing
+                  </Link>
+
+                  <Link
+                    to={loginRedirectPath}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition"
+                  >
+                    <Heart className="w-4 h-4 text-rose-600" aria-hidden="true" />
+                    Sign In to Save Favourite
+                  </Link>
+                </>
+              )}
             </div>
+
+            {/* Inline Enquiry Form */}
+            {isAuthenticated && activeAction === 'ENQUIRY' && (
+              <form
+                onSubmit={handleEnquirySubmit}
+                aria-label="Send structured enquiry form"
+                className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">Send Enquiry to Advertiser</h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAction('NONE')}
+                    aria-label="Close enquiry form"
+                    className="p-1 text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {enquirySuccess ? (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-2">
+                    <p>{enquirySuccess}</p>
+                    <Link
+                      to="/portal/enquiries"
+                      className="inline-block font-semibold text-emerald-800 underline"
+                    >
+                      Open My Enquiries →
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {enquiryMutation.isError && (
+                      <p role="alert" className="text-xs text-rose-700 bg-rose-50 p-2 rounded-lg">
+                        {enquiryMutation.error instanceof ApiClientError
+                          ? enquiryMutation.error.message
+                          : 'Could not submit enquiry.'}
+                      </p>
+                    )}
+
+                    <div>
+                      <label
+                        htmlFor="enquiry-subject"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Subject
+                      </label>
+                      <input
+                        id="enquiry-subject"
+                        type="text"
+                        required
+                        minLength={3}
+                        maxLength={200}
+                        value={enquirySubject}
+                        onChange={(e) => setEnquirySubject(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="enquiry-phone"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Callback Phone (optional)
+                      </label>
+                      <input
+                        id="enquiry-phone"
+                        type="tel"
+                        maxLength={32}
+                        value={enquiryPhone}
+                        onChange={(e) => setEnquiryPhone(e.target.value)}
+                        placeholder="+2348012345678"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="enquiry-message"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Your Message (min 10 chars)
+                      </label>
+                      <textarea
+                        id="enquiry-message"
+                        required
+                        minLength={10}
+                        maxLength={3000}
+                        rows={4}
+                        value={enquiryMessage}
+                        onChange={(e) => setEnquiryMessage(e.target.value)}
+                        placeholder="Ask about availability, inspection schedule, payment terms, or legal documentation…"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={enquiryMutation.isPending}
+                      className="w-full py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white text-xs font-semibold"
+                    >
+                      {enquiryMutation.isPending ? 'Sending Enquiry…' : 'Submit Enquiry'}
+                    </button>
+                  </>
+                )}
+              </form>
+            )}
+
+            {/* Inline Viewing Request Form */}
+            {isAuthenticated && activeAction === 'VIEWING' && (
+              <form
+                onSubmit={handleViewingSubmit}
+                aria-label="Request property viewing form"
+                className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">Schedule Property Viewing</h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAction('NONE')}
+                    aria-label="Close viewing request form"
+                    className="p-1 text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {viewingSuccess ? (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-2">
+                    <p>{viewingSuccess}</p>
+                    <Link
+                      to="/portal/viewings"
+                      className="inline-block font-semibold text-emerald-800 underline"
+                    >
+                      Open My Viewing Requests →
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {viewingMutation.isError && (
+                      <p role="alert" className="text-xs text-rose-700 bg-rose-50 p-2 rounded-lg">
+                        {viewingMutation.error instanceof ApiClientError
+                          ? viewingMutation.error.message
+                          : 'Could not submit viewing request.'}
+                      </p>
+                    )}
+
+                    <div>
+                      <label
+                        htmlFor="viewing-datetime"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Preferred Date &amp; Time
+                      </label>
+                      <input
+                        id="viewing-datetime"
+                        type="datetime-local"
+                        required
+                        value={viewingDateTime}
+                        onChange={(e) => setViewingDateTime(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="viewing-mode"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Viewing Mode
+                      </label>
+                      <select
+                        id="viewing-mode"
+                        value={viewingMode}
+                        onChange={(e) => setViewingMode(e.target.value as ViewingMode)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      >
+                        <option value="IN_PERSON">In-Person Physical Inspection</option>
+                        <option value="VIRTUAL">Live Virtual Video Tour</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="viewing-notes"
+                        className="block text-xs font-semibold text-slate-700 mb-1"
+                      >
+                        Notes for Advertiser (optional)
+                      </label>
+                      <textarea
+                        id="viewing-notes"
+                        rows={3}
+                        maxLength={1500}
+                        value={viewingNotes}
+                        onChange={(e) => setViewingNotes(e.target.value)}
+                        placeholder="Any preferred time window or questions ahead of the inspection…"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={viewingMutation.isPending}
+                      className="w-full py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white text-xs font-semibold"
+                    >
+                      {viewingMutation.isPending ? 'Submitting Request…' : 'Request Viewing Slot'}
+                    </button>
+                  </>
+                )}
+              </form>
+            )}
 
             <div className="pt-2 border-t border-slate-100 text-center">
               <Link

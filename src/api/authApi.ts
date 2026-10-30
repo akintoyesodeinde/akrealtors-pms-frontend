@@ -73,10 +73,19 @@ export const authApi = {
     firstName?: string;
     lastName?: string;
     phoneNumber?: string;
-    currentPassword?: string;
-    newPassword?: string;
   }): Promise<UserProfileResponse> {
     const { data } = await httpClient.patch<UserProfileResponse>('/users/me', payload);
+    return data;
+  },
+
+  async changePassword(payload: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ message: string }> {
+    const { data } = await httpClient.post<{ message: string }>(
+      '/users/me/change-password',
+      payload,
+    );
     return data;
   },
 };
